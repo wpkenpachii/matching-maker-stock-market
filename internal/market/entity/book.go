@@ -24,21 +24,36 @@ func NewBook(ordersChan chan *Order, ordersChanOut chan *Order, wg *sync.WaitGro
 }
 
 func (b *Book) Trade() {
-	buyOrders := NewOrderQueue()
-	sellOrders := NewOrderQueue()
-	heap.Init(buyOrders)
-	heap.Init(sellOrders)
+	buyOrders := make(map[string]*OrderQueue)
+	sellOrders := make(map[string]*OrderQueue)
+	// buyOrders := NewOrderQueue()
+	// sellOrders := NewOrderQueue()
+
+	// heap.Init(buyOrders)
+	// heap.Init(sellOrders)
 
 	for order := range b.OrdersChan {
+		asset := order.Asset.ID
+
+		if buyOrders[asset] == nil {
+			buyOrders[asset] = NewOrderQueue()
+			heap.Init(buyOrders[asset])
+		}
+
+		if sellOrders[asset] == nil {
+			sellOrders[asset] = NewOrderQueue()
+			heap.Init(sellOrders[asset])
+		}
+
 		if order.OrderType == "BUY" { // If its a Buying Order
-			buyOrders.Push(order) // Add it to Buying Orders stack
+			buyOrders[asset].Push(order) // Add it to Buying Orders stack
 			/*
 				Lets check if there's any selling order in sellOrders stack
 				And if there's is any selling order that the price is lower or equal to the buying order price
 			*/
-			if existsOrderTypeOf(sellOrders) && priceLessOrEqualTo(sellOrders, order.Price) {
+			if existsOrderTypeOf(sellOrders[asset]) && priceLessOrEqualTo(sellOrders[asset], order.Price) {
 				// remove this found order from sell channel
-				sellOrder := sellOrders.Pop().(*Order)
+				sellOrder := sellOrders[asset].Pop().(*Order)
 				if sellOrder.PendingShares > 0 { // Check if in this order theres any pending share to create transaction
 					transaction := NewTransaction(sellOrder, order, order.Shares, order.Price) // create transaction
 					b.AddTransaction(transaction, b.Wg)                                        // Add transaction to the book
@@ -47,18 +62,18 @@ func (b *Book) Trade() {
 					b.OrdersChanOut <- sellOrder
 					b.OrdersChanOut <- order
 					if sellOrder.PendingShares > 0 {
-						sellOrders.Push(sellOrder)
+						sellOrders[asset].Push(sellOrder)
 					}
 				}
 			}
 		} else if order.OrderType == "SELL" {
-			sellOrders.Push(order)
+			sellOrders[asset].Push(order)
 			/*
 				Lets check if there's any buying order in buyOrders stack
 				And if there's is any buying order that the price is greater or equal to the selling order price
 			*/
-			if existsOrderTypeOf(buyOrders) && priceGreaterOrEqualTo(sellOrders, order.Price) {
-				buyOrder := buyOrders.Pop().(*Order)
+			if existsOrderTypeOf(buyOrders[asset]) && priceGreaterOrEqualTo(sellOrders[asset], order.Price) {
+				buyOrder := buyOrders[asset].Pop().(*Order)
 				if buyOrder.PendingShares > 0 { // Check if in this order theres any pending share to create transaction
 					transaction := NewTransaction(buyOrder, order, order.Shares, order.Price)
 					b.AddTransaction(transaction, b.Wg)
@@ -67,7 +82,7 @@ func (b *Book) Trade() {
 					b.OrdersChanOut <- buyOrder
 					b.OrdersChanOut <- order
 					if buyOrder.PendingShares > 0 {
-						buyOrders.Push(buyOrder)
+						buyOrders[asset].Push(buyOrder)
 					}
 				}
 			}
