@@ -25,3 +25,7 @@ func NewOrder(orderId string, investor *Investor, asset *Asset, shares int, pric
 		Transactions:  []*Transaction{},
 	}
 }
+
+func (o *Order) SetStatus(status string) {
+	o.Status = status
+}
